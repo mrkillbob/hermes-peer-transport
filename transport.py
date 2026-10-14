@@ -60,9 +60,8 @@ class Envelope:
         for value in (self.in_reply_to, self.generation):
             if value is not None and (not isinstance(value, str) or not value or len(value) > 256):
                 raise TransportError("invalid reference")
-        if self.kind in {"needs_input", "input_response", "cancel_request", "cancel_result"}:
-            if not self.generation:
-                raise TransportError("request generation required")
+        if self.kind in {"needs_input", "input_response", "cancel_request", "cancel_result"} and not self.generation:
+            raise TransportError("request generation required")
         if not isinstance(self.payload, bytes) or len(self.payload) > 65536:
             raise TransportError("payload exceeds bound")
         record = asdict(self)

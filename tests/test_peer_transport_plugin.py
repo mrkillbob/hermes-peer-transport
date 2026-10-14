@@ -1,10 +1,8 @@
 """Offline peer delivery: durable facts never imply task authority."""
 from dataclasses import replace
 
-import pytest
-
 import peer_transport_loader  # noqa: F401  (registers peer_transport_plugin)
-
+import pytest
 from peer_transport_plugin.transport import Envelope, Mailbox, Route, TransportError
 
 
@@ -206,6 +204,7 @@ def test_claim_only_touches_the_selected_conversation(tmp_path):
 
 def test_wire_does_not_silently_default_missing_version():
     import json
+
     from peer_transport_plugin.transport import Acknowledgement
     for record, decode in [(json.loads(message().encode()), Envelope.decode),
                            (json.loads(Acknowledgement("m1", message().digest, route(), "queued").encode()),

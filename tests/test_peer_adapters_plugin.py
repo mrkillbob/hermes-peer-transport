@@ -2,10 +2,8 @@
 import io
 import json
 
-import pytest
-
 import peer_transport_loader  # noqa: F401  (registers peer_transport_plugin)
-
+import pytest
 from peer_transport_plugin.adapters import OwnedStream, QueueEndpoint
 from peer_transport_plugin.transport import Delivery, Envelope, Route, TransportError
 
@@ -263,6 +261,7 @@ def test_recreated_bound_stream_cannot_pass_uncertain_session_mail(tmp_path):
 def launch_contract(tmp_path):
     import hashlib
     import os
+
     from peer_transport_plugin import adapters
     binary = tmp_path / 'claude'
     binary.write_bytes(b'fake executable, never executed')
@@ -273,9 +272,9 @@ def launch_contract(tmp_path):
 
 
 def auth_status(**changes):
-    record = dict(loggedIn=True, authMethod='claude.ai', apiProvider='firstParty',
-                  subscriptionType='pro', email='private@example.invalid',
-                  orgId='private-org', configDirectory='private-path')
+    record = {"loggedIn": True, "authMethod": 'claude.ai', "apiProvider": 'firstParty',
+                  "subscriptionType": 'pro', "email": 'private@example.invalid',
+                  "orgId": 'private-org', "configDirectory": 'private-path'}
     record.update(changes)
     return record
 
@@ -297,8 +296,9 @@ class FakeClaudeProcess:
 
 
 def fake_launch(monkeypatch, status, exit_code=0):
-    from peer_transport_plugin import adapters
     import subprocess
+
+    from peer_transport_plugin import adapters
     calls = []
     child = FakeClaudeProcess()
     def run(args, **kwargs):
@@ -313,9 +313,9 @@ def fake_launch(monkeypatch, status, exit_code=0):
 
 
 @pytest.mark.platforms('posix')
-@pytest.mark.parametrize('changes', [dict(loggedIn=False), dict(loggedIn=1),
-    dict(authMethod='apiKey'), dict(apiProvider='bedrock'),
-    dict(subscriptionType=None), dict(subscriptionType='unknown')])
+@pytest.mark.parametrize('changes', [{"loggedIn": False}, {"loggedIn": 1},
+    {"authMethod": 'apiKey'}, {"apiProvider": 'bedrock'},
+    {"subscriptionType": None}, {"subscriptionType": 'unknown'}])
 def test_launcher_blocks_unqualified_context_without_leaking_status(launch_contract, monkeypatch, changes):
     from peer_transport_plugin.adapters import ClaudeProcess
     calls, _ = fake_launch(monkeypatch, auth_status(**changes))
@@ -339,7 +339,7 @@ def test_launcher_uses_same_filtered_context_and_no_substantive_cutoffs(launch_c
     assert calls[1][2]['stdin'] == subprocess.PIPE
     assert calls[0][2]['env'] == calls[1][2]['env']
     assert calls[0][2]['cwd'] == calls[1][2]['cwd'] == launch_contract.cwd
-    assert not any(name.startswith('ANTHROPIC') or name.startswith('CLAUDE') for name in calls[1][2]['env'])
+    assert not any(name.startswith(('ANTHROPIC', 'CLAUDE')) for name in calls[1][2]['env'])
     args = calls[1][1]
     assert '--restricted' in args and args[args.index('--tools') + 1] == ''
     assert args[args.index('--mcp-config') + 1] == '{"mcpServers":{}}'
@@ -353,6 +353,7 @@ def test_launcher_uses_same_filtered_context_and_no_substantive_cutoffs(launch_c
 @pytest.mark.parametrize('field,value', [('sha256', '0' * 64), ('uid', -1), ('home', '/wrong'), ('shell', '/wrong'), ('cwd', '/wrong')])
 def test_launcher_rejects_host_contract_mismatch_before_auth(launch_contract, monkeypatch, field, value):
     from dataclasses import replace
+
     from peer_transport_plugin.adapters import ClaudeProcess
     calls, _ = fake_launch(monkeypatch, auth_status())
     with pytest.raises(TransportError, match='execution_context_unavailable'):
@@ -364,13 +365,14 @@ def test_launcher_rejects_host_contract_mismatch_before_auth(launch_contract, mo
 @pytest.mark.parametrize('usage', [{}, {'sonnet': {'provider': 'api'}}, {'sonnet': {'provider': 'firstParty'}, 'other': {'provider': 'bedrock'}}])
 def test_launcher_holds_non_subscription_result_and_reaps(launch_contract, monkeypatch, usage):
     from dataclasses import replace
+
     from peer_transport_plugin.adapters import ClaudeProcess
     _, child = fake_launch(monkeypatch, auth_status())
     route = Route('claude', 'cfde2348-af28-45ac-811b-150279d0eccd', 1, 'conversation')
     proc = ClaudeProcess.launch(launch_contract, route)
     proc.stream.send(replace(delivery(), route=route))
     with pytest.raises(TransportError, match='provider_unverified'):
-        proc.observe(json.dumps(dict(type='result', session_id=route.binding, uuid='r1', is_error=False, modelUsage=usage)).encode())
+        proc.observe(json.dumps({"type": 'result', "session_id": route.binding, "uuid": 'r1', "is_error": False, "modelUsage": usage}).encode())
     assert proc.stream.active is not None
     assert child.terminated and child.stdout.closed
 
@@ -379,12 +381,13 @@ def test_launcher_holds_non_subscription_result_and_reaps(launch_contract, monke
 @pytest.mark.parametrize('exit_code,expected', [(0, 'completed'), (1, 'process_failed')])
 def test_launcher_requires_correlated_result_and_exit(launch_contract, monkeypatch, exit_code, expected):
     from dataclasses import replace
+
     from peer_transport_plugin.adapters import ClaudeProcess
     _, child = fake_launch(monkeypatch, auth_status())
     route = Route('claude', 'cfde2348-af28-45ac-811b-150279d0eccd', 1, 'conversation')
     proc = ClaudeProcess.launch(launch_contract, route)
     proc.stream.send(replace(delivery(), route=route))
-    event = dict(type='result', session_id=route.binding, uuid='r1', is_error=False, modelUsage={'sonnet': {'provider':'firstParty'}})
+    event = {"type": 'result', "session_id": route.binding, "uuid": 'r1', "is_error": False, "modelUsage": {'sonnet': {'provider':'firstParty'}}}
     assert proc.observe(json.dumps({**event, 'session_id':'other'}).encode()) is None
     assert proc.observe(json.dumps(event).encode()).outcome == 'completed'
     assert not child.stdin.closed
@@ -404,9 +407,10 @@ def test_launcher_missing_result_cannot_complete(launch_contract, monkeypatch):
 
 @pytest.mark.platforms('posix')
 def test_launcher_invalid_auth_output_never_spawns_or_leaks(launch_contract, monkeypatch):
-    from peer_transport_plugin.adapters import ClaudeProcess
-    import peer_transport_plugin.adapters as adapters
     import subprocess
+
+    from peer_transport_plugin import adapters
+    from peer_transport_plugin.adapters import ClaudeProcess
     calls, _ = fake_launch(monkeypatch, auth_status())
     monkeypatch.setattr(adapters.subprocess, 'run', lambda *a, **k: subprocess.CompletedProcess(a, 1, 'private malformed', 'private stderr'))
     with pytest.raises(TransportError) as error:
@@ -417,10 +421,10 @@ def test_launcher_invalid_auth_output_never_spawns_or_leaks(launch_contract, mon
 
 @pytest.mark.platforms('posix')
 def test_launcher_cancel_kills_reaps_and_preserves_uncertain_reservation(launch_contract, monkeypatch, tmp_path):
-    from dataclasses import replace
+    import subprocess
+
     from peer_transport_plugin.adapters import ClaudeProcess
     from peer_transport_plugin.transport import Mailbox
-    import subprocess
     _, child = fake_launch(monkeypatch, auth_status())
     original_wait = child.wait
     def wait(timeout=None):
@@ -442,8 +446,9 @@ def test_launcher_cancel_kills_reaps_and_preserves_uncertain_reservation(launch_
 
 @pytest.mark.platforms('posix')
 def test_launcher_operational_timeout_is_non_success_and_cleans_up(launch_contract, monkeypatch):
-    from peer_transport_plugin.adapters import ClaudeProcess
     import subprocess
+
+    from peer_transport_plugin.adapters import ClaudeProcess
     _, child = fake_launch(monkeypatch, auth_status())
     original_wait = child.wait
     def wait(timeout=None):
